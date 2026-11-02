@@ -1,0 +1,25 @@
+OpenIDEA - Windows x64 Portable
+
+Extract the entire ZIP to a writable folder and run openidea.exe.
+Keep any DLLs next to the executable. No OpenIDEA installer is required.
+
+Requirements:
+- Windows 10 or Windows 11, x64.
+- Microsoft Edge WebView2 Runtime. Most systems already include it.
+  If missing, obtain the Evergreen Runtime from Microsoft's official page:
+  https://developer.microsoft.com/microsoft-edge/webview2/
+
+Settings and caches remain in the normal per-user AppData directories.
+This package is not a fully portable profile and does not bundle language
+servers, SDKs, Git or other external development tools.
+
+Automatic installer-based updates are disabled. To update, close OpenIDEA
+and extract a new portable ZIP. Existing per-user settings are retained.
+
+This community build is unsigned. Windows SmartScreen may warn about it.
+Check the published SHA-256 checksum and download only from this fork:
+https://github.com/caojcm/openidea/releases/tag/windows-portable
+
+Upstream: https://github.com/l0ng-ai/openidea
+Fork: https://github.com/caojcm/openidea
+License: Apache-2.0. See LICENSE, NOTICE and THIRD_PARTY_LICENSES.md.

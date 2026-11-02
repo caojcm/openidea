@@ -34,17 +34,17 @@ stable Rust, existing Vitest.
 clone of main, pushes to origin/main and writes `changed` and `sha` to
 `GITHUB_OUTPUT`.
 
-- [ ] Create real local Git repositories in Vitest fixtures. Test an unchanged
+- [x] Create real local Git repositories in Vitest fixtures. Test an unchanged
       upstream, a new upstream commit alongside a fork-only file, and conflicting
       edits. Assert origin/main and output values after executing the script.
-- [ ] Run `pnpm test scripts/fork-automation.test.ts` and confirm the missing
+- [x] Run `pnpm test scripts/fork-automation.test.ts` and confirm the missing
       script fails.
-- [ ] Implement fetch, ancestor check, ordinary merge, push and outputs. Abort
+- [x] Implement fetch, ancestor check, ordinary merge, push and outputs. Abort
       conflicting merges and exit nonzero without pushing.
-- [ ] Add a six-hour schedule and manual dispatch. Use checkout main with full
+- [x] Add a six-hour schedule and manual dispatch. Use checkout main with full
       history and `contents: write`. Call the portable workflow only when changed,
       passing the exact SHA.
-- [ ] Run the Git integration tests and confirm all three behaviors.
+- [x] Run the Git integration tests and confirm all three behaviors.
 
 ## Task 2: Portable Packaging
 
@@ -56,32 +56,32 @@ clone of main, pushes to origin/main and writes `changed` and `sha` to
 -BinaryPath <exe> -OutputDirectory <dir>` writes
 `OpenIDEA-windows-x64-portable.zip` and its `.sha256`.
 
-- [ ] Add a Windows test fixture with an executable and a DLL. Execute the real
+- [x] Add a Windows test fixture with an executable and a DLL. Execute the real
       script, extract the ZIP, assert contents and compute the checksum independently.
       Add a missing-executable test that requires nonzero exit and no ZIP.
-- [ ] Run the tests and confirm failure because packaging is not implemented.
-- [ ] Implement copying executable, DLLs, licenses and usage guide, compression
+- [x] Run the tests and confirm failure because packaging is not implemented.
+- [x] Implement copying executable, DLLs, licenses and usage guide, compression
       and SHA-256 output.
-- [ ] Add portable config with `bundle.active: false`,
+- [x] Add portable config with `bundle.active: false`,
       `bundle.createUpdaterArtifacts: false`, and `plugins.updater.endpoints: []`.
-- [ ] Run packaging tests, script lint and config validation.
+- [x] Run packaging tests, script lint and config validation.
 
 ## Task 3: Build, Publish and Verify
 
 **Files:** `.github/workflows/windows-portable.yml`, `docs/fork-automation.md`.
 
-- [ ] Add workflow_call with a required source SHA, main push and manual
+- [x] Add workflow_call with a required source SHA, main push and manual
       triggers, fork-only gating and one portable-build concurrency group.
-- [ ] Reuse upstream setup actions, frozen pnpm install and
+- [x] Reuse upstream setup actions, frozen pnpm install and
       `pnpm tauri build --target x86_64-pc-windows-msvc --no-bundle
   --config src-tauri/tauri.portable.conf.json -- --locked`.
-- [ ] Package, extract and launch the packaged executable hidden for ten seconds.
+- [x] Package, extract and launch the packaged executable hidden for ten seconds.
       Fail on early exit and stop only that process after the check.
-- [ ] Upload ZIP and checksum artifacts. Create or update the prerelease tag and
+- [x] Upload ZIP and checksum artifacts. Create or update the prerelease tag and
       assets using the workflow token, marking the release as a prerelease.
-- [ ] Document schedule, fixed download URL, manual operations, conflict handling,
+- [x] Document schedule, fixed download URL, manual operations, conflict handling,
       unsigned builds and the system WebView2 requirement.
-- [ ] Run targeted tests, formatting, lint, TypeScript checks, frontend build,
+- [x] Run targeted tests, formatting, lint, TypeScript checks, frontend build,
       workflow syntax validation and `git diff --check`.
 - [ ] Commit only task files and push the completed commits to origin/main.
       Observe the first portable build and a manual sync run with the GitHub API.
@@ -92,3 +92,13 @@ clone of main, pushes to origin/main and writes `changed` and `sha` to
 Every approved requirement is assigned to a task. There are no new runtime
 dependencies, secret requirements, installer changes or extra architectures.
 The tag may move, but main always uses an ordinary merge and ordinary push.
+
+## Local Verification Results
+
+- Five new real-script tests pass on Windows.
+- TypeScript checks, frontend build, lint and new-file formatting pass.
+- Both workflows pass actionlint; the PowerShell script parses successfully.
+- Existing development-session tests fail or time out on this Windows host.
+- Existing generated-theme and repository-wide format checks report CRLF
+  checkout differences. Those unrelated source and generated files are unchanged.
+- First hosted build and sync execution are verified after pushing the workflows.

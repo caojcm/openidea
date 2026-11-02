@@ -1,0 +1,36 @@
+name: Sync Upstream
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'caojcm/openidea'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+      sha: ${{ steps.sync.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Merge upstream without overwriting fork changes
+        id: sync
+        run: bash scripts/sync-upstream.sh https://github.com/l0ng-ai/openidea.git
+
+  # GITHUB_TOKEN pushes do not trigger push workflows, so call the build explicitly.
+  portable:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    uses: ./.github/workflows/windows-portable.yml
+    with:
+      ref: ${{ needs.sync.outputs.sha }}

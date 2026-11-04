@@ -92,6 +92,11 @@ export const commands = {
 	 */
 	agentSetCommand: (id: string, command: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("agent_set_command", { id, command })),
 	/**
+	 *  Environment variables built-in agent `id` starts with (saved in its agent file);
+	 *  an empty map clears them.
+	 */
+	agentSetEnv: (id: string, env: { [key in string]: string }) => typedError<null, IdeError>(__TAURI_INVOKE("agent_set_env", { id, env })),
+	/**
 	 *  Agents of the ACP Registry this machine can run, with what is installed; the list
 	 *  saved earlier when the registry is unreachable. Cancel with `cancel_request(request)`.
 	 */
@@ -582,6 +587,10 @@ export const commands = {
 	runConfigs: () => typedError<RunConfig_Serialize[], IdeError>(__TAURI_INVOKE("run_configs")),
 	runDotnetResolve: (config: RunConfig_Deserialize, debug: boolean) => typedError<RunConfig_Serialize, IdeError>(__TAURI_INVOKE("run_dotnet_resolve", { config, debug })),
 	runSaveConfigs: (configs: RunConfig_Deserialize[], removedDetectedIds: string[] | null) => typedError<null, IdeError>(__TAURI_INVOKE("run_save_configs", { configs, removedDetectedIds })),
+	/**  Temporary configurations as they are kept between sessions: without what settings derived. */
+	runWithoutDerived: (configs: RunConfig_Deserialize[]) => typedError<RunConfig_Serialize[], IdeError>(__TAURI_INVOKE("run_without_derived", { configs })),
+	/**  Kept temporary configurations with the current settings applied. */
+	runApplySettings: (configs: RunConfig_Deserialize[]) => typedError<RunConfig_Serialize[], IdeError>(__TAURI_INVOKE("run_apply_settings", { configs })),
 	/**  Configuration templates: per-type defaults applied to new configurations. */
 	runTemplates: () => typedError<RunConfig_Serialize[], IdeError>(__TAURI_INVOKE("run_templates")),
 	runSaveTemplates: (templates: RunConfig_Deserialize[]) => typedError<null, IdeError>(__TAURI_INVOKE("run_save_templates", { templates })),
@@ -638,6 +647,8 @@ export const commands = {
 	 *  Returns the refreshed model; a failed build is reported in its `syncError`.
 	 */
 	buildSync: (tool: BuildTool, request: RequestId, offline: boolean, profiles: string[], onProgress: Channel<SyncProgress>) => typedError<BuildModel, IdeError>(__TAURI_INVOKE("build_sync", { tool, request, offline, profiles, onProgress })),
+	/**  The resolved dependency tree of a Gradle project for one configuration (Dependency Analyzer). */
+	gradleDependencies: (gradlePath: string, configuration: string, offline: boolean, request: RequestId) => typedError<GradleDependency[], IdeError>(__TAURI_INVOKE("gradle_dependencies", { gradlePath, configuration, offline, request })),
 	/**
 	 *  The `.toml` of a version catalog the build imports as `group:artifact:version`, once a
 	 *  build has downloaded it.
@@ -760,6 +771,16 @@ export const commands = {
 	 *  `background` (`#rrggbb`) paints a new window until its page has loaded.
 	 */
 	windowOpenSettings: (page: string | null, newProjects: boolean, background: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("window_open_settings", { page, newProjects, background })),
+	/**
+	 *  Opens a window listing the files that differ between two revisions of this window's project.
+	 *  `background` (`#rrggbb`) paints it until its page has loaded.
+	 */
+	windowOpenComparison: (comparison: ComparisonLaunch, background: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("window_open_comparison", { comparison, background })),
+	/**
+	 *  Opens this window's Sync with Deployed window comparing `paths` with `server` (or hands them
+	 *  to the open one). `background` (`#rrggbb`) paints a new window until its page has loaded.
+	 */
+	windowOpenDeployment: (server: string, paths: string[], background: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("window_open_deployment", { server, paths, background })),
 	/**  Focuses the next / previous window (⌘` / ⇧⌘`). */
 	windowCycle: (forward: boolean) => __TAURI_INVOKE<void>("window_cycle", { forward }),
 	windowToggleFullscreen: () => typedError<boolean, IdeError>(__TAURI_INVOKE("window_toggle_fullscreen")),
@@ -782,6 +803,10 @@ export const commands = {
 	newProjects: boolean,
 	/**  Where to place the caret in some of `files` (`openidea --line 12 --column 5 <file>`). */
 	positions?: FilePosition[],
+	/**  Comparison windows: the revisions to compare (boxed: most launches have none). */
+	comparison?: ComparisonLaunch | null,
+	/**  Deployment windows: the server and local selection to compare. */
+	deployment?: DeploymentLaunch | null,
 } | null>("window_take_launch"),
 	windowCloseContext: () => __TAURI_INVOKE<CloseContext>("window_close_context"),
 	/**  Projects open in project windows, in window order (title bar project widget). */
@@ -1393,6 +1418,8 @@ export type AgentProvider = {
 	commandReadOnlyReason: AgentCommandReadOnlyReason | null,
 	/**  Whether the command was found (on `PATH`). */
 	installed: boolean,
+	/**  Environment variables it starts with (from its agent file). */
+	env: { [key in string]: string },
 	/**  Settings (models, modes…) the agent offered last time it ran; empty before its first session. */
 	config: AgentConfigOption[],
 	/**  Slash commands it offered last time. */
@@ -1569,6 +1596,7 @@ export type AppearanceSettings = {
 	preferredDarkTheme?: string,
 	/**  A plugin's file icon theme (`<plugin-id>/<theme-id>`); empty = the built-in icons. */
 	fileIconTheme?: string,
+	fileIconThemeOptions?: { [key in string]: FileIconThemeOptions },
 	/**  IDE zoom in percent (50–300). */
 	zoom?: number,
 	/**  Apply `ui_font_family` / `ui_font_size` (otherwise the theme's). */
@@ -2115,6 +2143,26 @@ export type CompareScope = {
 	singleFile: boolean,
 };
 
+/**  Files that differ between `from` and `to` (the working tree when `None`). */
+export type ComparisonLaunch = {
+	from: ComparisonRevision,
+	to: ComparisonRevision | null,
+	scope: ComparisonScope | null,
+	repo: IpcPath | null,
+};
+
+/**  A Git revision and how the comparison window names it. */
+export type ComparisonRevision = {
+	rev: string,
+	label: string,
+};
+
+/**  Limits a comparison to some paths (Compare with Branch on a selection). */
+export type ComparisonScope = {
+	paths: IpcPath[],
+	repositories: IpcPath[] | null,
+};
+
 export type CompletionItem = {
 	label: string,
 	/**  e.g. `(req: CreateOrderRequest)` shown right after the label. */
@@ -2394,7 +2442,7 @@ export type DbDriver = "sqlite" | "postgres" |
 /**  MySQL and MariaDB. */
 "mysql" | 
 /**  Microsoft SQL Server. */
-"sqlServer";
+"sqlServer" | "clickhouse";
 
 /**  `schema.table (columns) REFERENCES ref_schema.ref_table (ref_columns)`. */
 export type DbForeignKey = {
@@ -2688,6 +2736,13 @@ export type DeploymentCoverage = {
 	server: string,
 	paths: string[],
 	skipped: TransferError[],
+};
+
+/**  Local files to compare with a deployment server (Sync with Deployed). */
+export type DeploymentLaunch = {
+	/**  Deployment server id. */
+	server: string,
+	paths: IpcPath[],
 };
 
 export type DeploymentMapping = {
@@ -3327,6 +3382,27 @@ export type FileEntry = {
 	targetKind?: EntryKind | null,
 };
 
+/**
+ *  Main toolbar entries per side, in order: title widget ids (`project`,
+ *  `vcs.branch`…) or `action:<id>`. Widgets in neither list nor `hidden`
+ *  (registered later) keep their default place.
+ */
+export type FileIconThemeOptions = {
+	groups?: { [key in string]: boolean },
+	choices?: { [key in string]: string },
+	hideFiles?: boolean,
+	hideFolders?: boolean,
+	hollowFolders?: boolean,
+	hideUiIcons?: boolean,
+	hidePsiIcons?: boolean,
+	monochrome?: string | null,
+	saturation?: number | null,
+	opacity?: number | null,
+	iconSize?: number | null,
+	rowHeight?: number | null,
+	accent?: string | null,
+};
+
 /**  Identifier occurrences in one file (`identifiers_in_files`). */
 export type FileIdentifiers = {
 	path: IpcPath,
@@ -3660,6 +3736,27 @@ export type GoSettings = {
 };
 
 export type GotoKind = "definition" | "declaration" | "typeDefinition" | "implementation";
+
+/**  One line of the report: an occurrence of a dependency where it is requested. */
+export type GradleDependency = {
+	/**  `group`, empty for a project dependency. */
+	group: string,
+	/**  Artifact name, or the project path (`:core`) of a project dependency. */
+	name: string,
+	/**  The version asked for here; `None` when a platform or constraint supplies it. */
+	requested: string | null,
+	/**  The version Gradle selected (`-> 1.2`), when it differs from the request. */
+	selected: string | null,
+	/**  A project of the build (`project :core`, or a module substituted by one). */
+	project: boolean,
+	/**  `(*)`: listed with its dependencies earlier in the tree. */
+	repeated: boolean,
+	/**  `(c)`: a dependency constraint rather than a dependency. */
+	constraint: boolean,
+	/**  `(n)` / `FAILED`: not resolved. */
+	unresolved: boolean,
+	children: GradleDependency[],
+};
 
 export type GradleDistribution = "wrapper" | "local";
 
@@ -4451,6 +4548,10 @@ export type Launch = {
 	newProjects: boolean,
 	/**  Where to place the caret in some of `files` (`openidea --line 12 --column 5 <file>`). */
 	positions?: FilePosition[],
+	/**  Comparison windows: the revisions to compare (boxed: most launches have none). */
+	comparison?: ComparisonLaunch | null,
+	/**  Deployment windows: the server and local selection to compare. */
+	deployment?: DeploymentLaunch | null,
 };
 
 export type LaunchConfig = {
@@ -4656,11 +4757,6 @@ export type LogQuery = {
 
 export type LspRefreshKind = "inlayHints" | "semanticTokens" | "codeLens";
 
-/**
- *  Main toolbar entries per side, in order: title widget ids (`project`,
- *  `vcs.branch`…) or `action:<id>`. Widgets in neither list nor `hidden`
- *  (registered later) keep their default place.
- */
 export type MainToolbarSettings = {
 	left?: string[],
 	right?: string[],

@@ -8,8 +8,22 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
+	/**  Devices `adb` knows about, online ones first. */
+	androidDevices: () => typedError<AndroidDevice[], IdeError>(__TAURI_INVOKE("android_devices")),
+	/**
+	 *  Follows `serial`'s log until the request is cancelled, in batches of lines.
+	 *  `clear` empties the device's buffers first.
+	 */
+	androidLogcat: (request: RequestId, serial: string, clear: boolean, onLines: Channel<LogcatLine[]>) => typedError<null, IdeError>(__TAURI_INVOKE("android_logcat", { request, serial, clear, onLines })),
 	recentProjects: () => __TAURI_INVOKE<RecentProject[]>("recent_projects"),
 	removeRecentProject: (path: string) => typedError<null, IdeError>(__TAURI_INVOKE("remove_recent_project", { path })),
+	/**  The welcome screen's project groups. */
+	recentProjectGroups: () => __TAURI_INVOKE<RecentProjectGroup[]>("recent_project_groups"),
+	/**
+	 *  Replaces the project groups; returns them as saved (names trimmed and unique, each
+	 *  project in one group, only recent projects).
+	 */
+	setRecentProjectGroups: (groups: RecentProjectGroup[]) => typedError<RecentProjectGroup[], IdeError>(__TAURI_INVOKE("set_recent_project_groups", { groups })),
 	openProject: (path: string) => typedError<ProjectInfo_Serialize, IdeError>(__TAURI_INVOKE("open_project", { path })),
 	projectTrustStatus: (path: string) => typedError<TrustStatus, IdeError>(__TAURI_INVOKE("project_trust_status", { path })),
 	projectTrustList: () => typedError<TrustDecisions, IdeError>(__TAURI_INVOKE("project_trust_list")),
@@ -491,7 +505,7 @@ export const commands = {
 	vcsBranches: (repo: string | null) => typedError<Branch[], IdeError>(__TAURI_INVOKE("vcs_branches", { repo })),
 	vcsStashes: (repo: string | null) => typedError<Stash[], IdeError>(__TAURI_INVOKE("vcs_stashes", { repo })),
 	vcsStage: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stage", { paths })),
-	vcsAddToIgnore: (paths: string[], destination: IgnoreDestination) => typedError<string[], IdeError>(__TAURI_INVOKE("vcs_add_to_ignore", { paths, destination })),
+	vcsAddToIgnore: (paths: string[], destination: IgnoreDestination) => typedError<IpcPath[], IdeError>(__TAURI_INVOKE("vcs_add_to_ignore", { paths, destination })),
 	vcsUnstage: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_unstage", { paths })),
 	vcsStagePatch: (patch: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stage_patch", { patch })),
 	vcsDiscard: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_discard", { paths })),
@@ -664,14 +678,16 @@ export const commands = {
 	runTestReports: (module: string | null, sinceMs: number | null) => typedError<TestCaseReport[], IdeError>(__TAURI_INVOKE("run_test_reports", { module, sinceMs })),
 	/**  Maven and Gradle projects of the window's project, from the build files plus the last sync. */
 	buildModel: () => typedError<BuildModel, IdeError>(__TAURI_INVOKE("build_model")),
+	gradleLinkProjects: (paths: string[]) => typedError<BuildModel, IdeError>(__TAURI_INVOKE("gradle_link_projects", { paths })),
+	gradleUnlinkProjects: (paths: string[]) => typedError<BuildModel, IdeError>(__TAURI_INVOKE("gradle_unlink_projects", { paths })),
 	/**
 	 *  Runs Maven (`help:effective-pom dependency:tree`) or Gradle (`tasks --all`) in the
 	 *  background, reporting progress on `on_progress`; cancellable with `cancel_request(request)`.
 	 *  Returns the refreshed model; a failed build is reported in its `syncError`.
 	 */
-	buildSync: (tool: BuildTool, request: RequestId, offline: boolean, profiles: string[], onProgress: Channel<SyncProgress>) => typedError<BuildModel, IdeError>(__TAURI_INVOKE("build_sync", { tool, request, offline, profiles, onProgress })),
+	buildSync: (tool: BuildTool, request: RequestId, offline: boolean, profiles: string[], buildDir: string | null, onProgress: Channel<SyncProgress>) => typedError<BuildModel, IdeError>(__TAURI_INVOKE("build_sync", { tool, request, offline, profiles, buildDir, onProgress })),
 	/**  The resolved dependency tree of a Gradle project for one configuration (Dependency Analyzer). */
-	gradleDependencies: (gradlePath: string, configuration: string, offline: boolean, request: RequestId) => typedError<GradleDependency[], IdeError>(__TAURI_INVOKE("gradle_dependencies", { gradlePath, configuration, offline, request })),
+	gradleDependencies: (gradlePath: string, configuration: string, offline: boolean, request: RequestId, buildDir: string | null) => typedError<GradleDependency[], IdeError>(__TAURI_INVOKE("gradle_dependencies", { gradlePath, configuration, offline, request, buildDir })),
 	/**
 	 *  The `.toml` of a version catalog the build imports as `group:artifact:version`, once a
 	 *  build has downloaded it.
@@ -715,6 +731,8 @@ export const commands = {
 	debugCompletions: (session: DebugSessionId, frameId: number | null, text: string, line: number, column: number) => typedError<DebugCompletion[], IdeError>(__TAURI_INVOKE("debug_completions", { session, frameId, text, line, column })),
 	debugResume: (session: DebugSessionId, threadId: number) => typedError<null, IdeError>(__TAURI_INVOKE("debug_resume", { session, threadId })),
 	debugPause: (session: DebugSessionId, threadId: number) => typedError<null, IdeError>(__TAURI_INVOKE("debug_pause", { session, threadId })),
+	debugHotReload: (session: DebugSessionId) => typedError<null, IdeError>(__TAURI_INVOKE("debug_hot_reload", { session })),
+	debugHotRestart: (session: DebugSessionId) => typedError<null, IdeError>(__TAURI_INVOKE("debug_hot_restart", { session })),
 	debugStep: (session: DebugSessionId, threadId: number, kind: StepKind) => typedError<null, IdeError>(__TAURI_INVOKE("debug_step", { session, threadId, kind })),
 	debugRunTo: (session: DebugSessionId, threadId: number, path: string, line: number, force: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("debug_run_to", { session, threadId, path, line, force })),
 	debugStop: (session: DebugSessionId) => typedError<null, IdeError>(__TAURI_INVOKE("debug_stop", { session })),
@@ -1231,7 +1249,7 @@ export const commands = {
 	dbSetManualCommit: (id: string, manual: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("db_set_manual_commit", { id, manual })),
 	dbFinishTransaction: (id: string, commit: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("db_finish_transaction", { id, commit })),
 	dbStatements: (id: string, text: string, from: number, to: number) => typedError<SqlStatement[], IdeError>(__TAURI_INVOKE("db_statements", { id, text, from, to })),
-	dbExecute: (request: RequestId, id: string, statements: SqlStatement[], maxRows: number) => typedError<DbStatementOutcome[], IdeError>(__TAURI_INVOKE("db_execute", { request, id, statements, maxRows })),
+	dbExecute: (request: RequestId, id: string, statements: SqlStatement[], skip: number, maxRows: number) => typedError<DbStatementOutcome[], IdeError>(__TAURI_INVOKE("db_execute", { request, id, statements, skip, maxRows })),
 	dbTablePage: (request: RequestId, id: string, schema: string, table: string, filter: string | null, sort: DbSortKey[], offset: number, limit: number) => typedError<DbTablePage, IdeError>(__TAURI_INVOKE("db_table_page", { request, id, schema, table, filter, sort, offset, limit })),
 	dbApplyEdits: (id: string, schema: string, table: string, edits: DbRowEdit[]) => typedError<number | null, IdeError>(__TAURI_INVOKE("db_apply_edits", { id, schema, table, edits })),
 	dbConsolePath: (id: string) => typedError<IpcPath, IdeError>(__TAURI_INVOKE("db_console_path", { id })),
@@ -1582,6 +1600,19 @@ export type AgentUsage = {
 	cost?: AgentCost | null,
 };
 
+/**  One entry of `adb devices -l`. */
+export type AndroidDevice = {
+	/**  `adb -s` value: a USB serial number, `emulator-5554`, or `host:port`. */
+	serial: string,
+	/**  `device` (usable), `offline`, `unauthorized` or `no permissions`. */
+	state: string,
+	model: string | null,
+	product: string | null,
+	/**  The device's own name from the build (`ro.product.device`). */
+	device: string | null,
+	transportId: string | null,
+};
+
 export type AppInfo = {
 	version: string,
 	platform: string,
@@ -1858,7 +1889,7 @@ export type BuildMessage = {
 /**  The build systems of a project; `None` when the project does not use one. */
 export type BuildModel = {
 	maven: MavenModel | null,
-	gradle: GradleModel | null,
+	gradle?: GradleModel[],
 };
 
 export type BuildResult = {
@@ -3924,6 +3955,8 @@ export type GradleRunUsing =
 
 /**  Build Tools › Gradle. */
 export type GradleSettings = {
+	/**  Linked build directories; absent preserves automatic discovery, empty unlinks all builds. */
+	linkedProjects?: string[] | null,
 	/**  Empty = Project JDK; otherwise a JDK home. */
 	jvm?: string,
 	distribution?: GradleDistribution,
@@ -5009,6 +5042,22 @@ export type LogQuery = {
 	stopAt?: string | null,
 };
 
+/**  The single-letter logcat priority, in increasing severity. */
+export type LogcatLevel = "verbose" | "debug" | "info" | "warn" | "error" | "fatal" | 
+/**  A line logcat prints outside the message format (`--------- beginning of main`). */
+"unknown";
+
+/**  One [`LogcatLevel`]-tagged line of `adb logcat -v threadtime`. */
+export type LogcatLine = {
+	/**  `MM-DD HH:MM:SS.mmm`, as logcat prints it (no year, device time zone). */
+	time: string,
+	pid: number,
+	tid: number,
+	level: LogcatLevel,
+	tag: string,
+	message: string,
+};
+
 export type LspRefreshKind = "inlayHints" | "semanticTokens" | "codeLens";
 
 export type MainToolbarSettings = {
@@ -5127,6 +5176,8 @@ export type MavenProject = {
 export type MavenSettings = {
 	/**  Project-relative root POMs removed from the Maven project model. */
 	unlinkedProjects?: string[],
+	/**  Project-relative POMs outside the root reactor added as independent top-level projects. */
+	linkedProjects?: string[],
 	/**  Maven home (or its `mvn` executable); empty = the project's `mvnw`, else `mvn` on `PATH`. */
 	home?: string,
 	/**  User `settings.xml` (`-s`); empty = `~/.m2/settings.xml`. */
@@ -5497,7 +5548,11 @@ export type PluginEvent =
  *  Plugin languages, or the servers they may start, changed: re-fetch
  *  `languages` (the host re-detects open documents: [`crate::Host::plugin_languages_changed`]).
  */
-{ type: "languagesChanged" };
+{ type: "languagesChanged" } | 
+/**  Copy `text` to the system clipboard. */
+{ type: "copyToClipboard"; pluginId: string; text: string } | 
+/**  Open `url` (`http(s)://`) in the system browser. */
+{ type: "openUrl"; pluginId: string; url: string };
 
 export type PluginInfo = {
 	id: string,
@@ -5960,6 +6015,14 @@ export type RecentProject = {
 	branch: string | null,
 };
 
+/**  A named group of recent projects on the welcome screen (New Project Group…, Move to Group). */
+export type RecentProjectGroup = {
+	name: string,
+	/**  Its projects, in the order they were added. */
+	paths: IpcPath[],
+	expanded?: boolean,
+};
+
 export type RefactoringProblem = {
 	severity: ProblemSeverity,
 	message: string,
@@ -6010,6 +6073,8 @@ export type RegistryAgent = {
 	installed: string | null,
 	/**  Whether [`Self::version`] is newer than the installed one. */
 	update: boolean,
+	/**  An install of it is running (it goes on after the Settings page that started it closes). */
+	installing: boolean,
 };
 
 export type RegistryDistribution = 
@@ -6193,7 +6258,7 @@ export type Risk =
 export type RootKind = "source" | "test" | "resources" | "testResources" | "excluded";
 
 export type RouteSource = {
-	path: string,
+	path: IpcPath,
 	text: string,
 };
 

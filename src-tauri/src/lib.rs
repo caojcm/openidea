@@ -37,6 +37,8 @@ mod window_groups;
 mod window_work_area;
 mod window_zoom;
 mod windows;
+#[cfg(windows)]
+mod windows_error_mode;
 
 use parking_lot::Mutex;
 use state::AppState;
@@ -73,7 +75,7 @@ pub fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>) {
 pub fn run() {
     ide_workspace::process::mark_start();
     #[cfg(windows)]
-    quiet_error_dialogs();
+    windows_error_mode::quiet_error_dialogs();
     let context = tauri::generate_context!();
     #[cfg(debug_assertions)]
     let context = dev::configure(context);
@@ -392,17 +394,4 @@ pub(crate) fn dispatch_menu_action(app: &tauri::AppHandle, id: &str) {
             _ => {}
         },
     }
-}
-
-/// Windows shows a modal "System Error" box when a process can't load a DLL (a broken
-/// `python.exe` found while detecting interpreters: "VCRUNTIME140.dll was not found").
-/// Child processes inherit the error mode, so probes and tools started by the IDE fail
-/// with an exit code instead (#1161).
-#[cfg(windows)]
-fn quiet_error_dialogs() {
-    use windows_sys::Win32::System::Diagnostics::Debug::{
-        SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX, SetErrorMode,
-    };
-    // SAFETY: SetErrorMode only changes this process's error mode flags.
-    unsafe { SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX) };
 }

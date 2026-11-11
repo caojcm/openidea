@@ -104,6 +104,11 @@ pub struct AgentSettings {
     #[serde(deserialize_with = "agent_defaults")]
     #[specta(type = BTreeMap<String, BTreeMap<String, String>>)]
     pub defaults: BTreeMap<String, BTreeMap<String, String>>,
+    /// MCP servers passed to coding agents in `session/new`, `session/load` and `session/fork`,
+    /// keyed by server name (`[agents.mcpServers.<name>]`).
+    #[serde(deserialize_with = "or_default")]
+    #[specta(type = BTreeMap<String, AgentMcpServer>)]
+    pub mcp_servers: BTreeMap<String, AgentMcpServer>,
 }
 
 impl Default for AgentSettings {
@@ -121,6 +126,58 @@ impl Default for AgentSettings {
             send_with: SendKey::Enter,
             while_running: WhileRunning::Queue,
             defaults: BTreeMap::new(),
+            mcp_servers: BTreeMap::new(),
+        }
+    }
+}
+
+/// Transport of an MCP server configured in Settings › Agents › MCP Servers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum McpTransport {
+    #[default]
+    Stdio,
+    Http,
+    Sse,
+}
+
+/// An MCP server passed to coding agents in `session/new`, `session/load` and `session/fork`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AgentMcpServer {
+    #[serde(deserialize_with = "or_default")]
+    #[specta(type = McpTransport)]
+    pub transport: McpTransport,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    /// Agent provider ids this server is enabled for (e.g. `["claude", "codex"]`);
+    /// empty means enabled for all agents.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<String>,
+}
+
+impl Default for AgentMcpServer {
+    fn default() -> Self {
+        Self {
+            transport: McpTransport::Stdio,
+            enabled: true,
+            command: None,
+            args: Vec::new(),
+            env: BTreeMap::new(),
+            url: None,
+            headers: BTreeMap::new(),
+            agents: Vec::new(),
         }
     }
 }
@@ -396,6 +453,10 @@ pub struct GeneralSettings {
     /// Where updates come from: `auto` (the CNB mirror for the Chinese UI, else GitHub) | `github` | `cnb`.
     pub update_source: String,
     pub auto_check_updates: bool,
+    /// System Settings › Updates: open the What's New page after the app starts a new version.
+    pub show_whats_new_after_update: bool,
+    /// The version the app last started with, so the first start after an update is recognisable.
+    pub last_run_version: String,
 }
 
 impl Default for GeneralSettings {
@@ -414,6 +475,8 @@ impl Default for GeneralSettings {
             project_name: String::new(),
             update_source: "auto".into(),
             auto_check_updates: true,
+            show_whats_new_after_update: true,
+            last_run_version: String::new(),
         }
     }
 }
@@ -521,6 +584,8 @@ pub struct AppearanceSettings {
     pub main_menu_style: String,
     /// A lone Alt press focuses or opens the main menu (IDEA `ide.windows.main.menu.focus.on.alt`).
     pub main_menu_alt: bool,
+    /// Always show the main menu titles instead of the hamburger button (#1521).
+    pub always_show_main_menu: bool,
     /// `subpixel` | `greyscale` | `none`
     pub ide_antialiasing: String,
     pub editor_antialiasing: String,
@@ -598,6 +663,7 @@ impl Default for AppearanceSettings {
             menu_icons: true,
             main_menu_style: "hamburger".into(),
             main_menu_alt: true,
+            always_show_main_menu: false,
             ide_antialiasing: "greyscale".into(),
             editor_antialiasing: "greyscale".into(),
             show_tool_window_bars: true,
@@ -1273,6 +1339,11 @@ pub struct ProjectStructureSettings {
     pub unmarked: Vec<String>,
     /// Content roots besides the project folder (absolute paths), shown and searched with it.
     pub content_roots: Vec<String>,
+    /// Other projects (absolute paths) this project depends on; indexed and navigable like content roots.
+    pub dependencies: Vec<String>,
+    /// Per-workspace-member dependencies: member root (IPC path) → the roots it depends on.
+    /// A member not listed here (or with an empty list) navigates only into itself.
+    pub member_dependencies: BTreeMap<String, Vec<String>>,
     /// "Exclude files": `;`-separated name patterns (`*.log;tmp*`) excluded at any depth.
     pub exclude_files: String,
     /// Project compiler output directory (relative to project root or absolute; empty = default).
@@ -1447,6 +1518,27 @@ mod tests {
     }
 
     #[test]
+    fn double_click_opens_diff_is_unset_by_default_and_round_trips() {
+        let old: Settings = serde_json::from_str(r#"{"vcs":{"commit":{"nonModal":true}}}"#).unwrap();
+        assert_eq!(old.vcs.commit.double_click_opens_diff, None);
+        // The unset value shows up as `null` in the defaults: `SettingsStore::set` only
+        // accepts a key path it finds there.
+        let json = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(json["vcs"]["commit"]["doubleClickOpensDiff"], serde_json::Value::Null);
+        for on in [true, false] {
+            let mut settings = Settings::default();
+            settings.vcs.commit.double_click_opens_diff = Some(on);
+            let json = serde_json::to_value(&settings).unwrap();
+            assert_eq!(json["vcs"]["commit"]["doubleClickOpensDiff"], on);
+            let restored: Settings = serde_json::from_value(json).unwrap();
+            assert_eq!(restored.vcs.commit.double_click_opens_diff, Some(on));
+        }
+        // Explicit `null` reads back as unset.
+        let cleared: Settings = serde_json::from_str(r#"{"vcs":{"commit":{"doubleClickOpensDiff":null}}}"#).unwrap();
+        assert_eq!(cleared.vcs.commit.double_click_opens_diff, None);
+    }
+
+    #[test]
     fn agent_meters_default_and_round_trip() {
         let old: Settings = serde_json::from_str(r#"{"agents":{"showCost":true}}"#).unwrap();
         assert!(old.agents.show_cost);
@@ -1487,6 +1579,11 @@ mod tests {
         let off: Settings = serde_json::from_str(r#"{"appearance":{"mainMenuAlt":false}}"#).unwrap();
         assert!(!off.appearance.main_menu_alt);
         assert_eq!(serde_json::to_value(off).unwrap()["appearance"]["mainMenuAlt"], false);
+        let old: Settings = serde_json::from_str(r#"{"appearance":{"compactMode":true}}"#).unwrap();
+        assert!(!old.appearance.always_show_main_menu);
+        let shown: Settings = serde_json::from_str(r#"{"appearance":{"alwaysShowMainMenu":true}}"#).unwrap();
+        assert!(shown.appearance.always_show_main_menu);
+        assert_eq!(serde_json::to_value(shown).unwrap()["appearance"]["alwaysShowMainMenu"], true);
     }
 
     #[test]
